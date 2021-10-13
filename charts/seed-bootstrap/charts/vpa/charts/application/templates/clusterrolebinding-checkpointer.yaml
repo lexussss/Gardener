@@ -1,0 +1,25 @@
+---
+apiVersion: {{ include "rbacversion" . }}
+kind: ClusterRoleBinding
+metadata:
+  name: gardener.cloud:vpa:{{ .Values.clusterType }}:checkpoint-actor
+  labels:
+  {{ toYaml .Values.labels | indent 4 }}
+  annotations:
+    resources.gardener.cloud/delete-on-invalid-update: "true"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gardener.cloud:vpa:{{ .Values.clusterType }}:checkpoint-actor
+{{- if .Values.recommender.enabled }}
+subjects:
+{{- if .Values.recommender.enableServiceAccount }}
+- kind: ServiceAccount
+  name: vpa-recommender
+  namespace: {{ .Release.Namespace }}
+{{- else }}
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: gardener.cloud:vpa:recommender
+{{- end }}
+{{- end }}

@@ -1,0 +1,94 @@
+apiVersion: {{ include "networkpolicyversion" . }}
+kind: NetworkPolicy
+metadata:
+  annotations:
+    gardener.cloud/description: |
+      Allows Prometheus to talk to various components in the Seed cluster.
+  name: allow-prometheus
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+      gardener.cloud/role: monitoring
+      role: monitoring
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          networking.gardener.cloud/from-prometheus: allowed
+    - podSelector:
+        matchLabels:
+          networking.gardener.cloud/from-prometheus: allowed
+          component: kube-state-metrics
+      namespaceSelector:
+        matchLabels:
+          role: garden
+    - podSelector:
+        matchLabels:
+          app: etcd-statefulset
+          garden.sapcloud.io/role: controlplane
+    - podSelector:
+        matchLabels:
+          app: prometheus
+          role: monitoring
+      namespaceSelector:
+        matchLabels:
+          role: garden
+    - podSelector:
+        matchLabels:
+          component: alertmanager
+          role: monitoring
+      namespaceSelector:
+        matchLabels:
+          role: garden
+    - podSelector:
+        matchLabels:
+          app: vpa-exporter
+          gardener.cloud/role: vpa
+      namespaceSelector:
+        matchLabels:
+          role: garden
+    - podSelector:
+        matchLabels:
+          app: hvpa-controller
+          gardener.cloud/role: hvpa
+      namespaceSelector:
+        matchLabels:
+          role: garden
+    {{- if .Values.shoot.sniEnabled }}
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          app: istio-ingressgateway
+    {{- end }}
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          component: grafana
+          gardener.cloud/role: monitoring
+    - podSelector:
+        matchLabels:
+          app: nginx-ingress
+          component: controller
+      namespaceSelector:
+        matchLabels:
+          role: kube-system
+    - podSelector:
+        matchLabels:
+          app: nginx-ingress
+          component: controller
+      namespaceSelector:
+        matchLabels:
+          role: garden
+    - podSelector:
+        matchLabels:
+          app: aggregate-prometheus
+          role: monitoring
+      namespaceSelector:
+        matchLabels:
+          role: garden
+  policyTypes:
+  - Egress
+  - Ingress

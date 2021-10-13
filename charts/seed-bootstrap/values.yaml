@@ -1,0 +1,384 @@
+priorityClassName: foo
+
+prometheus:
+  resources:
+    prometheus:
+      limits:
+        cpu: 500m
+        memory: 2000Mi
+      requests:
+        cpu: 300m
+        memory: 1000Mi
+    prometheus-config-reloader:
+      limits:
+        cpu: 20m
+        memory: 50Mi
+      requests:
+        cpu: 10m
+        memory: 25Mi
+  port: 9090
+  storage: 10Gi
+  additionalScrapeConfigs: ""
+  additionalCAdvisorScrapeConfigMetricRelabelConfigs: ""
+  hvpa:
+    enabled: false
+    minAllowed:
+      cpu: 100m
+      memory: 1000M
+    targetAverageUtilizationCpu: 80
+    targetAverageUtilizationMemory: 80
+    scaleUpStabilization:
+      stabilizationDuration: "5m"
+      minChange:
+        cpu:
+          value: "100m"
+          percentage: 80
+        memory:
+          value: 300M
+          percentage: 80
+    scaleDownStabilization:
+      stabilizationDuration: "24h"
+      minChange:
+        cpu:
+          value: "200m"
+          percentage: 80
+        memory:
+          value: 500M
+          percentage: 80
+    limitsRequestsGapScaleParams:
+      cpu:
+        value: 400m
+        percentage: 60
+      memory:
+        value: 2Gi
+        percentage: 80
+
+aggregatePrometheus:
+  resources:
+    prometheus:
+      limits:
+        cpu: 500m
+        memory: 2000Mi
+      requests:
+        cpu: 300m
+        memory: 1000Mi
+    prometheus-config-reloader:
+      limits:
+        cpu: 20m
+        memory: 20Mi
+      requests:
+        cpu: 10m
+        memory: 10Mi
+  port: 9090
+  storage: 20Gi
+  seed: seed
+  hostName: p.seed-1.example.com
+  secretName: prometheus-tls
+  hvpa:
+    enabled: false
+    minAllowed:
+      cpu: 100m
+      memory: 1000M
+    targetAverageUtilizationCpu: 80
+    targetAverageUtilizationMemory: 80
+    scaleUpStabilization:
+      stabilizationDuration: "5m"
+      minChange:
+        cpu:
+          value: "100m"
+          percentage: 80
+        memory:
+          value: 300M
+          percentage: 80
+    scaleDownStabilization:
+      stabilizationDuration: "24h"
+      minChange:
+        cpu:
+          value: "200m"
+          percentage: 80
+        memory:
+          value: 500M
+          percentage: 80
+    limitsRequestsGapScaleParams:
+      cpu:
+        value: 400m
+        percentage: 60
+      memory:
+        value: 2Gi
+        percentage: 80
+
+grafana:
+  hostName: p.seed-1.example.com
+  secretName: grafana-tls
+
+allowedMetrics:
+  alertmanager: []
+
+  cAdvisor:
+  - container_cpu_cfs_periods_total
+  - container_cpu_cfs_throttled_seconds_total
+  - container_cpu_cfs_throttled_periods_total
+  - container_cpu_usage_seconds_total
+  - container_fs_reads_bytes_total
+  - container_fs_writes_bytes_total
+  - container_fs_inodes_total
+  - container_fs_limit_bytes
+  - container_fs_usage_bytes
+  - container_last_seen
+  - container_memory_working_set_bytes
+  - container_network_receive_bytes_total
+  - container_network_transmit_bytes_total
+
+  kubelet:
+  - kubelet_volume_stats_available_bytes
+  - kubelet_volume_stats_capacity_bytes
+
+  nodeExporter:
+  - node_cpu_seconds_total
+  - node_filesystem_avail_bytes
+  - node_filesystem_free_bytes
+  - node_filesystem_size_bytes
+  - node_load1
+  - node_load5
+  - node_load15
+  - node_memory_Active_bytes
+  - node_nf_conntrack_entries
+  - node_nf_conntrack_entries_limit
+  - process_max_fds
+  - process_open_fds
+
+  kubeStateMetrics:
+  - kube_daemonset_metadata_generation
+  - kube_daemonset_status_current_number_scheduled
+  - kube_daemonset_status_desired_number_scheduled
+  - kube_daemonset_status_number_available
+  - kube_daemonset_status_number_unavailable
+  - kube_daemonset_updated_number_scheduled
+  - kube_deployment_metadata_generation
+  - kube_deployment_spec_replicas
+  - kube_deployment_status_observed_generation
+  - kube_deployment_status_replicas
+  - kube_deployment_status_replicas_available
+  - kube_deployment_status_replicas_unavailable
+  - kube_deployment_status_replicas_updated
+  - kube_node_info
+  - kube_node_labels
+  - kube_node_spec_unschedulable
+  - kube_node_status_allocatable_cpu_cores
+  - kube_node_status_allocatable_memory_bytes
+  - kube_node_status_allocatable_pods
+  - kube_node_status_capacity_cpu_cores
+  - kube_node_status_capacity_memory_bytes
+  - kube_node_status_capacity_pods
+  - kube_node_status_condition
+  - kube_pod_container_info
+  - kube_pod_container_resource_limits_cpu_cores
+  - kube_pod_container_resource_limits_memory_bytes
+  - kube_pod_container_resource_requests_cpu_cores
+  - kube_pod_container_resource_requests_memory_bytes
+  - kube_pod_container_status_restarts_total
+  - kube_pod_info
+  - kube_pod_labels
+  - kube_pod_status_phase
+  - kube_pod_status_ready
+  - kube_statefulset_metadata_generation
+  - kube_statefulset_replicas
+  - kube_statefulset_status_observed_generation
+  - kube_statefulset_status_replicas
+  - kube_statefulset_status_replicas_current
+  - kube_statefulset_status_replicas_ready
+  - kube_statefulset_status_replicas_updated
+  - kube_hpa_spec_max_replicas
+  - kube_hpa_spec_min_replicas
+  - kube_hpa_status_condition
+  - kube_hpa_status_current_replicas
+  - kube_hpa_status_desired_replicas
+
+  fluentbit:
+  - fluentbit_input_bytes_total
+  - fluentbit_input_records_total
+  - fluentbit_output_proc_bytes_total
+  - fluentbit_output_proc_records_total
+  - fluentbit_output_errors_total
+  - fluentbit_output_retries_total
+  - fluentbit_output_retries_failed_total
+  - fluentbit_filter_add_records_total
+  - fluentbit_filter_drop_records_total
+
+  fluentbitOutputPlugin:
+  - promtail_dropped_entries_total
+  - fluentbit_loki_gardener_errors_total
+  - fluentbit_loki_gardener_logs_without_metadata_total
+  - fluentbit_loki_gardener_incoming_logs_total
+  - fluentbit_loki_gardener_incoming_logs_with_endpoint_total
+  - fluentbit_loki_gardener_forwarded_logs_total
+  - fluentbit_loki_gardener_dropped_logs_total
+
+  vpa:
+  - vpa_status_recommendation
+  - vpa_spec_container_resource_policy_allowed
+  - vpa_metadata_generation
+
+  hvpa:
+  - hvpa_aggregate_applied_scaling_total
+  - hvpa_aggregate_blocked_scalings_total
+  - hvpa_spec_replicas
+  - hvpa_status_replicas
+  - hvpa_status_applied_hpa_current_replicas
+  - hvpa_status_applied_hpa_desired_replicas
+  - hvpa_status_applied_vpa_recommendation
+  - hvpa_status_blocked_hpa_current_replicas
+  - hvpa_status_blocked_hpa_desired_replicas
+  - hvpa_status_blocked_vpa_recommendation
+
+  loki:
+  - loki_ingester_blocks_per_chunk_sum
+  - loki_ingester_blocks_per_chunk_count
+  - loki_ingester_chunk_age_seconds_sum
+  - loki_ingester_chunk_age_seconds_count
+  - loki_ingester_chunk_bounds_hours_sum
+  - loki_ingester_chunk_bounds_hours_count
+  - loki_ingester_chunk_compression_ratio_sum
+  - loki_ingester_chunk_compression_ratio_count
+  - loki_ingester_chunk_encode_time_seconds_sum
+  - loki_ingester_chunk_encode_time_seconds_count
+  - loki_ingester_chunk_entries_sum
+  - loki_ingester_chunk_entries_count
+  - loki_ingester_chunk_size_bytes_sum
+  - loki_ingester_chunk_size_bytes_count
+  - loki_ingester_chunk_utilization_sum
+  - loki_ingester_chunk_utilization_count
+  - loki_ingester_memory_chunks
+  - loki_ingester_received_chunks
+  - loki_ingester_samples_per_chunk_sum
+  - loki_ingester_samples_per_chunk_count
+  - loki_ingester_sent_chunks
+  - loki_panic_total
+  - loki_logql_querystats_duplicates_total
+  - loki_logql_querystats_ingester_sent_lines_total
+  - prometheus_target_scrapes_sample_out_of_order_total
+
+  istiod:
+  - galley_istio_authentication_meshpolicies
+  - galley_istio_networking_destinationrules
+  - galley_istio_networking_gateways
+  - galley_istio_networking_virtualservices
+  - galley_validation_failed
+  - galley_validation_passed
+  - go_goroutines
+  - go_memstats_alloc_bytes
+  - go_memstats_heap_alloc_bytes
+  - go_memstats_heap_inuse_bytes
+  - go_memstats_heap_sys_bytes
+  - go_memstats_stack_inuse_bytes
+  - istio_build
+  - pilot_conflict_inbound_listener
+  - pilot_conflict_outbound_listener_http_over_current_tcp
+  - pilot_conflict_outbound_listener_tcp_over_current_http
+  - pilot_conflict_outbound_listener_tcp_over_current_tcp
+  - pilot_proxy_convergence_time_bucket
+  - pilot_proxy_convergence_time_bucket
+  - pilot_services
+  - pilot_total_xds_internal_errors
+  - pilot_total_xds_rejects
+  - pilot_virt_services
+  - pilot_xds
+  - pilot_xds_cds_reject
+  - pilot_xds_eds_reject
+  - pilot_xds_lds_reject
+  - pilot_xds_push_context_errors
+  - pilot_xds_pushes
+  - pilot_xds_rds_reject
+  - pilot_xds_write_timeout
+  - process_cpu_seconds_total
+  - process_open_fds
+  - process_resident_memory_bytes
+  - process_virtual_memory_bytes
+
+  istioIngressGateway:
+  - envoy_cluster_upstream_cx_active
+  - envoy_cluster_upstream_cx_connect_fail
+  - envoy_cluster_upstream_cx_total
+  - envoy_cluster_upstream_cx_tx_bytes_total
+  - envoy_server_hot_restart_epoch
+  - go_goroutines
+  - go_memstats_alloc_bytes
+  - go_memstats_heap_alloc_bytes
+  - go_memstats_heap_inuse_bytes
+  - go_memstats_heap_sys_bytes
+  - go_memstats_stack_inuse_bytes
+  - istio_build
+  - istio_request_bytes_bucket
+  - istio_request_bytes_sum
+  - istio_request_duration_milliseconds_bucket
+  - istio_request_duration_seconds_bucket
+  - istio_requests_total
+  - istio_response_bytes_bucket
+  - istio_response_bytes_sum
+  - istio_tcp_connections_closed_total
+  - istio_tcp_connections_opened_total
+  - istio_tcp_received_bytes_total
+  - istio_tcp_sent_bytes_total
+  - process_cpu_seconds_total
+  - process_open_fds
+  - process_resident_memory_bytes
+  - process_virtual_memory_byte
+
+ingress:
+  # admin : admin base64 encoded
+  basicAuthSecret: YWRtaW46JGFwcjEkSWRSaVM5c3MkR3U1MHMxaGUwL2Z6Tzh2elE4S1BEMQ==
+
+reserveExcessCapacity: true
+
+replicas:
+  reserve-excess-capacity: 0
+
+global:
+  images:
+    alertmanager: image-repository:image-tag
+    alpine: image-repository:image-tag
+    configmap-reloader: image-repository:image-tag
+    loki: image-repository:image-tag
+    gardener-resource-manager: image-repository:image-tag
+    grafana: image-repository:image-tag
+    pause-container: image-repository:image-tag
+    prometheus: image-repository:image-tag
+    vpa-admission-controller: image-repository:image-tag
+    vpa-recommender: image-repository:image-tag
+    vpa-updater: image-repository:image-tag
+    hvpa-controller: image-repository:image-tag
+  ingressClass: nginx
+
+fluent-bit:
+  enabled: true
+
+loki:
+  enabled: true
+
+alertmanager:
+  emailConfigs: []
+  enabled: true
+  storage: 1Gi
+
+hvpa:
+  enabled: false
+
+vpa:
+  enabled: true
+  exporter:
+    replicas: 1
+    enabled: true
+    podAnnotations: {}
+    podLabels: {}
+    enableServiceAccount: true
+    enableService: true
+    port: 9570
+    servicePort: 9570
+    labels:
+      gardener.cloud/role: vpa
+
+istio:
+  enabled: false
+
+nginxIngress:
+  enabled: false

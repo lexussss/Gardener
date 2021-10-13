@@ -1,0 +1,14 @@
+{{- if .Values.admissionController.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vpa-webhook
+  namespace: {{ .Release.Namespace }}
+spec:
+  ports:
+    - port: {{ .Values.admissionController.servicePort }}
+      targetPort: {{ .Values.admissionController.port }}
+  selector:
+    app: vpa-admission-controller
+{{- end }}

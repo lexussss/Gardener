@@ -1,0 +1,147 @@
+global:
+  images:
+    loki: image-repository:image-tag
+    loki-curator: image-repository:image-tag
+    kube-rbac-proxy: image-repository:image-tag
+    telegraf: image-repository:image-tag
+  fluentbit:
+    labels:
+      gardener.cloud/role: logging
+      app: fluent-bit
+      role: logging
+
+authEnabled: true
+
+annotations: {}
+
+rbacSidecarEnabled: false
+kubeRBACProxyKubeconfigCheckSum: bed9a4ef5410793c023b3551308661a1a1acafe9f93c9393714ce4f2c0134ac3
+
+labels:
+  gardener.cloud/role: logging
+  app: loki
+  role: logging
+
+prometheus:
+  labels:
+    app: aggregate-prometheus
+    role: monitoring
+
+storage: 30Gi
+# enable tracing for debug, need install jaeger and specify right jaeger_agent_host
+tracing:
+  jaegerAgentHost:
+
+livenessProbe:
+  httpGet:
+    path: /ready
+    port: metrics
+  initialDelaySeconds: 120
+  failureThreshold: 5
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: metrics
+  initialDelaySeconds: 80
+  failureThreshold: 7
+
+replicas: 1
+
+resources:
+  loki:
+    limits:
+      cpu: 450m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 300Mi
+  curator:
+    limits:
+      cpu: 200m
+      memory: 200Mi
+    requests:
+      cpu: 10m
+      memory: 12Mi
+  kubeRBACproxy:
+    limits:
+      cpu: 60m
+      memory: 50Mi
+    requests:
+      cpu: 30m
+      memory: 15Mi 
+  telegraf:
+    limits:
+      cpu: 15m
+      memory: 100Mi
+    requests:
+      cpu: 5m
+      memory: 35Mi
+
+securityContext:
+  fsGroup: 10001
+  runAsGroup: 10001
+  runAsNonRoot: true
+  runAsUser: 10001
+
+priorityClass:
+  value: 40
+  name: loki
+
+service:
+  type: ClusterIP
+  port: 3100
+
+curator:
+  port: 2718
+
+kubeRBACProxy:
+  port: 8080
+
+telegraf:
+  port: 9273
+
+ingress:
+  class: nginx
+  hosts: 
+  - hostName: loki.ingress.example.com 
+    secretName: loki-tls
+    serviceName: loki
+    servicePort: 8080
+    backendPath: "/loki/api/v1/push"
+
+hvpa:
+  enabled: false
+  maxAllowed:
+    cpu: 800m
+    memory: 2G
+  minAllowed:
+    cpu: 200m
+    memory: 300M
+  targetAverageUtilizationCpu: 80
+  targetAverageUtilizationMemory: 80
+  scaleUpStabilization:
+    stabilizationDuration: "5m"
+    minChange:
+      cpu:
+        value: "100m"
+        percentage: 80
+      memory:
+        value: 300M
+        percentage: 80
+  scaleDownStabilization:
+    stabilizationDuration: "168h"
+    minChange:
+      cpu:
+        value: "200m"
+        percentage: 80
+      memory:
+        value: 500M
+        percentage: 80
+  limitsRequestsGapScaleParams:
+    cpu:
+      value: "300m"
+      percentage: 40
+    memory:
+      value: "1000M"
+      percentage: 40

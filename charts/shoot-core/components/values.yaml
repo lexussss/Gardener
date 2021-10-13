@@ -1,0 +1,69 @@
+global:
+  kubernetesVersion: 1.15.1
+  podNetwork: 100.96.0.0/11
+  vpaEnabled: false
+apiserver-proxy:
+  enabled: false
+  images:
+    apiserver-proxy: image-repository
+    apiserver-proxy-sidecar: image-repository
+  advertiseIPAddress: 1.1.1.1
+  # webhook:
+    # caBundle: LS0tLS1C
+  proxySeedServer:
+    host: dummy.127.0.0.1.nip.io
+    port: 8443
+coredns:
+  enabled: true
+kube-apiserver-kubelet:
+  enabled: true
+kube-proxy:
+  enabled: true
+  kubeconfig: dummy-add-the-data-of-a-kubernetes-secret
+# featureGates: {}
+  podAnnotations: {}
+  images:
+    kube-proxy: image-repository
+monitoring:
+  enabled: true
+  node-exporter:
+    images:
+      node-exporter: image-repository:image-tag
+network-policies:
+  enabled: true
+node-problem-detector:
+  enabled: true
+podsecuritypolicies:
+  enabled: true
+  allowPrivilegedContainers: false
+shoot-info:
+  enabled: true
+  projectName: core
+  shootName: crazy-botany
+  provider: aws
+  region: eu-west-1
+  kubernetesVersion: 1.15.1
+  domain: crazy-botany.core.my-custom-domain.com
+  podNetwork: 100.96.0.0/11
+  serviceNetwork: 100.64.0.0/13
+# nodeNetwork: 10.250.0.0/16
+  maintenanceBegin: 210000+0000
+  maintenanceEnd: 220000+0000
+  extensions: shoot-dns-service,foo-bar
+vpn-shoot:
+  enabled: false
+  serviceNetwork: 10.0.0.0/24
+  podNetwork: 192.168.0.0/16
+# nodeNetwork: 172.16.0.0/20
+  tlsAuth: dummy-b64-data
+  diffieHellmanKey: LS0tLS1CRUdJTiBESCBQQVJBTUVURVJTLS0tLS0KTUlJQkNBS0NBUUVBN2NCWHhHOWFuNktSei9zQjV1aVNPVGY3RWcrdVdWa2hYTzRwZUtEVEFSek1ZYThiN1dSOApCL0F3K0F5VVh0QjN0WHRyemVDNU0zSUhudWhGd01vM0s0b1NPa0ZKeGF0TGxZS2VZMTVyK0t0NXZuT09UM0JXCmVONU9uV2xSNVdpN0daQldiYVFnWFZSNzlONHlzdDQzc1ZoSnVzNkJ5MGxONk9sYzl4RC95czlHSC95a0pWSWgKWi9OTHJ4QUM1bHhqd0NxSk1kOGhycnlDaHVEbHo1OTd2ZzZnWUZ1UlY2MFUvWVU0REs3MUY0SDdtSTA3YUdKOQpsK1NLOFRia0tXRjVJVEk3a1lXYmM0em10ZlhTWGFHak1oTTlvbVFVYVRIOWNzQjk2aHpGSmRlWjRYanh5YlJmClZjM3Q3WFA1cTdhZmVhS21NM0ZoU1hkZUhLQ1RxUXpRdXdJQkFnPT0KLS0tLS1FTkQgREggUEFSQU1FVEVSUy0tLS0tCg==
+  podAnnotations: {}
+  images:
+    vpn-shoot: image-repository:image-tag
+vertical-pod-autoscaler:
+  enabled: false
+node-local-dns:
+  enabled: false
+  podAnnotations: {}
+  images:
+    node-local-dns: image-repository:image-tag

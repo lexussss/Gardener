@@ -1,0 +1,142 @@
+---
+apiVersion: gardenlet.config.gardener.cloud/v1alpha1
+kind: GardenletConfiguration
+gardenClientConnection:
+  qps: 100
+  burst: 130
+seedClientConnection:
+  qps: 100
+  burst: 130
+shootClientConnection:
+  qps: 25
+  burst: 50
+controllers:
+  bastion:
+    concurrentSyncs: 20
+  backupBucket:
+    concurrentSyncs: 20
+  backupEntry:
+    concurrentSyncs: 20
+    deletionGracePeriodHours: 0
+  # deletionGracePeriodShootPurposes:
+  # - production
+  controllerInstallation:
+    concurrentSyncs: 20
+  controllerInstallationCare:
+    concurrentSyncs: 20
+    syncPeriod: 30s
+  controllerInstallationRequired:
+    concurrentSyncs: 1
+  seedAPIServerNetworkPolicy:
+    concurrentSyncs: 5
+  shoot:
+    concurrentSyncs: 20
+    syncPeriod: 1h
+    retryDuration: 12h
+  # `respectSyncPeriodOverwrite` specifies whether Shoot owners can
+  # mark their Shoots ignored (no reconciliation) or change their sync Period.
+#   respectSyncPeriodOverwrite: true
+  # `reconcileInMaintenanceOnly` specifies whether Shoot reconciliations
+  # can only happen during their maintenance time window or not.
+#   reconcileInMaintenanceOnly: true
+  # `progressReportPeriod` specifies how often the progress of a shoot operation shall be reported in its status.
+#   progressReportPeriod: 5s
+#   dnsEntryTTLSeconds: 120
+  shootCare:
+    concurrentSyncs: 5
+    syncPeriod: 30s
+    staleExtensionHealthChecks:
+      enabled: true
+    # threshold: 5m
+    conditionThresholds:
+    - type: APIServerAvailable
+      duration: 1m
+    - type: ControlPlaneHealthy
+      duration: 1m
+    - type: SystemComponentsHealthy
+      duration: 1m
+    - type: EveryNodeReady
+      duration: 5m
+  shootStateSync:
+    concurrentSyncs: 1
+    syncPeriod: 30s
+  seed:
+    concurrentSyncs: 5
+    syncPeriod: 1m
+  managedSeed:
+    concurrentSyncs: 5
+    syncPeriod: 1h
+    waitSyncPeriod: 15s
+    syncJitterPeriod: 5m
+resources:
+  capacity:
+    shoots: 200
+leaderElection:
+  leaderElect: true
+  leaseDuration: 15s
+  renewDeadline: 10s
+  retryPeriod: 2s
+  resourceLock: leases
+logLevel: info
+logFormat: text
+kubernetesLogLevel: 0
+server:
+  https:
+    bindAddress: 0.0.0.0
+    port: 2720
+  # optional, will be self-generated during startup when empty
+  # tls:
+  #   serverCertPath: dev/tls/gardenlet.crt
+  #   serverKeyPath: dev/tls/gardenlet.key
+debugging:
+  enableProfiling: false
+  enableContentionProfiling: false
+featureGates:
+  Logging: true
+  HVPA: true
+  HVPAForShootedSeed: true
+  ManagedIstio: true
+  APIServerSNI: true
+  CachedRuntimeClients: true
+  SeedKubeScheduler: false
+  ReversedVPN: false
+  UseDNSRecords: true
+  DenyInvalidExtensionResources: true
+# seedConfig:
+#   metadata:
+#     name: my-seed
+#   spec:
+#     <Check out the `spec` in the `50-seed.yaml` file to see what's possible to configure here>
+# logging:
+#   fluentBit:
+#     output: |-
+#       [Output]
+#           ...
+#   loki:
+#     garden:
+#       priority: 100
+#   shootNodeLogging:
+#     shootPurposes:
+#     - "development"
+# sni: # SNI configuration used for APIServerSNI and ManagedIstio feature gates with default values.
+#   ingress:
+#     serviceName: istio-ingress
+#     namespace: istio-ingress
+#     serviceExternalIP: 10.8.10.10 # Optional external ip for the ingress gateway load balancer.
+#     labels:
+#       istio: ingressgateway
+# exposureClassHandlers:
+# - name: internet-config
+#   loadBalancerService:
+#     annotations:
+#       loadbalancer/network: internet
+# - name: internal-config
+#   loadBalancerService:
+#     annotations:
+#       loadbalancer/network: internal
+#   sni:
+#     ingress:
+#       namespace: ingress-internal
+#       serviceExternalIP: 10.8.10.11 # Optional external ip for the ingress gateway load balancer.
+#       labels:
+#         network: internal

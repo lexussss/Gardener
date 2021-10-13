@@ -1,0 +1,14 @@
+apiVersion: {{ include "rbacversion" . }}
+kind: ClusterRole
+metadata:
+  name: gardener.cloud:psp:kube-system:vpn-shoot
+rules:
+- apiGroups:
+  - policy
+  - extensions
+  resourceNames:
+  - gardener.kube-system.vpn-shoot
+  resources:
+  - podsecuritypolicies
+  verbs:
+  - use

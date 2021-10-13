@@ -1,0 +1,610 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: {{ .Release.Namespace }}
+data:
+  prometheus.yaml: |
+    # All services in the {{ .Release.Namespace }} and that are annotated with
+    # * `prometheus.io/scrape`: Only scrape services that have a value of `true`
+    # * `prometheus.io/scheme`: If the metrics endpoint is secured then you will need to set this to `https` & most likely set the `tls_config` of the scrape config.
+    # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
+    # * `prometheus.io/port`: If the metrics are exposed on a different port to the service then set this appropriately. Use this when multiple ports are avaible by the pod.
+    # * `prometheus.io/name`: job name label to be applied to all metrics from that service.
+    # take note that there is a limit of 500 samples per target
+
+    global:
+      evaluation_interval: 1m
+      scrape_interval: 1m
+      external_labels:
+        cluster: {{ .Release.Namespace }}
+        project: {{ .Values.shoot.project }}
+        shoot_name: {{ .Values.shoot.name }}
+        name: {{ .Values.shoot.name }}
+        seed_api: {{ .Values.seed.apiserver }}
+        seed_region: {{ .Values.seed.region }}
+        seed_provider: {{ .Values.seed.provider }}
+        shoot_infra: {{ .Values.shoot.provider }}
+        ignoreAlerts: {{ .Values.ignoreAlerts }}
+    rule_files:
+    - /etc/prometheus/rules/*.yaml
+    alerting:
+      alertmanagers:
+{{- if hasKey .Values.alerting.auth_type "none" }}
+      - static_configs:
+        - targets:
+          - {{ .Values.alerting.auth_type.none.url }}
+{{- end }}
+{{- if hasKey .Values.alerting.auth_type "basic" }}
+      - static_configs:
+        - targets:
+          - {{ .Values.alerting.auth_type.basic.url }}
+        basic_auth:
+          username: {{ .Values.alerting.auth_type.basic.username }}
+          password: {{ .Values.alerting.auth_type.basic.password }}
+{{- end }}
+{{- if hasKey .Values.alerting.auth_type "certificate" }}
+      - static_configs:
+        - targets:
+          - {{ .Values.alerting.auth_type.certificate.url }}
+        tls_config:
+          ca_file: /etc/prometheus/operator/ca.crt
+          cert_file: /etc/prometheus/operator/tls.crt
+          key_file: /etc/prometheus/operator/tls.key
+          insecure_skip_verify: {{ .Values.alerting.auth_type.certificate.insecure_skip_verify }}
+{{- end }}
+      - kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+{{ include "prometheus.alertmanager.namespaces" . | indent 12 }}
+        relabel_configs:
+        - source_labels: [ __meta_kubernetes_service_label_component ]
+          action: keep
+          regex: alertmanager
+        - source_labels: [ __meta_kubernetes_service_label_role ]
+          action: keep
+          regex: monitoring
+        - source_labels: [ __meta_kubernetes_endpoint_port_name ]
+          action: keep
+          regex: metrics
+      alert_relabel_configs:
+      - source_labels: [ ignoreAlerts ]
+        regex: true
+        action: drop
+    scrape_configs:
+    - job_name: kube-kubelet
+      honor_labels: false
+      scheme: https
+      tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth-insecure" . | indent 8 }}
+      kubernetes_sd_configs:
+      - role: node
+        api_server: https://kube-apiserver:443
+        tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth" . | indent 10 }}
+      relabel_configs:
+      - source_labels: [ __meta_kubernetes_node_address_InternalIP ]
+        target_label: instance
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kube-apiserver:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+      - target_label: type
+        replacement: shoot
+      # get system services
+      metric_relabel_configs:
+      - source_labels: [ __name__ ]
+        regex: ^({{ if semverCompare "< 1.18-0" .Capabilities.KubeVersion.GitVersion }}kubelet_pod_start_latency_microseconds|{{ end }}|{{ if semverCompare "< 1.19-0" .Capabilities.KubeVersion.GitVersion }}kubelet_running_pod_count{{ else }}kubelet_running_pods{{ end }}|process_max_fds|process_open_fds)$
+        action: keep
+
+    - job_name: cadvisor
+      honor_labels: false
+      scheme: https
+      tls_config:
+        # This is needed because the api server's certificates are not are generated
+        # for a specific pod IP
+{{ include "prometheus.tls-config.kube-cert-auth-insecure" . | indent 8 }}
+      kubernetes_sd_configs:
+      - role: node
+        api_server: https://kube-apiserver:443
+        tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth" . | indent 10 }}
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kube-apiserver:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+      - target_label: type
+        replacement: shoot
+      metric_relabel_configs:
+      # get system services
+      - source_labels: [ id ]
+        action: replace
+        regex: ^/system\.slice/(.+)\.service$
+        target_label: systemd_service_name
+        replacement: '${1}'
+      - source_labels: [ id ]
+        action: replace
+        regex: ^/system\.slice/(.+)\.service$
+        target_label: container
+        replacement: '${1}'
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.cAdvisor | indent 6 }}
+      # We want to keep only metrics in kube-system namespace
+      - source_labels: [ namespace ]
+        action: keep
+        # systemd containers don't have namespaces
+        regex: (^$|^kube-system$)
+      - source_labels:
+        - container
+        - __name__
+        # The system container POD is used for networking
+        regex: POD;({{ without .Values.allowedMetrics.cAdvisor "container_network_receive_bytes_total" "container_network_transmit_bytes_total" | join "|" }})
+        action: drop
+      - source_labels: [ container ]
+        regex: ^$
+        action: drop
+      - regex: ^id$
+        action: labeldrop
+
+    # We fetch kubelet metrics from seed's kube-system Prometheus and filter
+    # the metrics in shoot's namespace
+    - job_name: kube-kubelet-seed
+      metrics_path: /federate
+      params:
+        'match[]':
+        - '{job="cadvisor",namespace="{{ .Release.Namespace }}"}'
+      static_configs:
+      - targets:
+        - prometheus-web.garden.svc
+      metric_relabel_configs:
+      # we make the shoot's pods in the shoot's namespace to appear in as its in the kube-system
+      - target_label: namespace
+        replacement: kube-system
+
+    - job_name: kube-state-metrics
+      honor_labels: false
+      # Service is used, because we only care about metric from one kube-state-metrics instance
+      # and not multiple in HA setup
+      kubernetes_sd_configs:
+      - role: service
+        namespaces:
+          names: [{{ .Release.Namespace }}]
+      relabel_configs:
+      - source_labels: [ __meta_kubernetes_service_label_component ]
+        action: keep
+        regex: kube-state-metrics
+      - source_labels: [ __meta_kubernetes_service_port_name ]
+        action: keep
+      - source_labels: [ __meta_kubernetes_service_label_type ]
+        regex: (.+)
+        target_label: type
+        replacement: ${1}
+      - target_label: instance
+        replacement: kube-state-metrics
+      metric_relabel_configs:
+      # we make the shoot's pods in the shoot's namepsace to apear in as its in the kube-system
+      - target_label: namespace
+        replacement: kube-system
+      - source_labels: [ pod ]
+        regex: ^.+\.tf-pod.+$
+        action: drop
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.kubeStateMetrics | indent 6 }}
+
+    - job_name: kube-state-metrics-seed
+      honor_labels: false
+      # Service is used, because we only care about metric from one kube-state-metrics instance
+      # and not multiple in HA setup
+      kubernetes_sd_configs:
+      - role: service
+        namespaces:
+          names: [ garden ]
+      relabel_configs:
+      - source_labels: [ __meta_kubernetes_service_label_component ]
+        action: keep
+        regex: kube-state-metrics
+      - source_labels: [ __meta_kubernetes_service_port_name ]
+        action: keep
+      - source_labels: [ __meta_kubernetes_service_label_type ]
+        regex: (.+)
+        target_label: type
+        replacement: ${1}
+      - target_label: instance
+        replacement: kube-state-metrics
+      metric_relabel_configs:
+      - source_labels: [namespace]
+        regex: {{ .Release.Namespace }}
+        action: keep
+      # we make the shoot's pods in the shoot's namepsace to apear in as its in the kube-system
+      - target_label: namespace
+        replacement: kube-system
+      - source_labels: [ pod ]
+        regex: ^.+\.tf-pod.+$
+        action: drop
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.kubeStateMetrics | indent 6 }}
+
+    - job_name: 'annotated-seed-service-endpoints'
+      honor_labels: false
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [{{ .Release.Namespace }}]
+      sample_limit: 500
+      relabel_configs:
+{{ include "prometheus.service-endpoints.relabel-config" . | indent 6 }}
+      metric_relabel_configs:
+{{ include "prometheus.drop-metrics.metric-relabel-config" . | indent 6 }}
+
+{{- if  (index .Values.rules.optional "alertmanager" ).enabled }}
+    - job_name: alertmanager
+      honor_labels: false
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [{{ .Release.Namespace }}]
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+        action: keep
+        regex: alertmanager-client;metrics
+      # common metrics
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: pod
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.alertManager | indent 6 }}
+{{- end }}
+
+    - job_name: prometheus
+      honor_labels: false
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [{{ .Release.Namespace }}]
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+        action: keep
+        regex: prometheus-web;metrics
+      # common metrics
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: pod
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.prometheus | indent 6 }}
+
+{{- if .Values.nodeLocalDNS.enabled }}
+    - job_name: node-local-dns
+      honor_labels: false
+      scheme: https
+      tls_config:
+        # This is needed because the kubelets' certificates are not are generated
+        # for a specific pod IP
+{{ include "prometheus.tls-config.kube-cert-auth-insecure" . | indent 8 }}
+      kubernetes_sd_configs:
+      - role: pod
+        api_server: https://kube-apiserver:443
+        tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth" . | indent 10 }}
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_pod_name
+        action: keep
+        regex: node-local.*
+      - source_labels:
+        - __meta_kubernetes_pod_container_name
+        - __meta_kubernetes_pod_container_port_name
+        action: keep
+        regex: node-cache;metrics
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: pod
+      - target_label: __address__
+        replacement: kube-apiserver:443
+      - source_labels: [__meta_kubernetes_pod_name,__meta_kubernetes_pod_container_port_number]
+        regex: (.+);(.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/namespaces/kube-system/pods/${1}:${2}/proxy/metrics
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.nodeLocalDNS | indent 6 }}
+{{ end }}
+
+    - job_name: node-exporter
+      honor_labels: false
+      scrape_timeout: 30s
+      scheme: https
+      tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth-insecure" . | indent 8 }}
+      kubernetes_sd_configs:
+      - role: endpoints
+        api_server: https://kube-apiserver:443
+        tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth" . | indent 10 }}
+      relabel_configs:
+      - target_label: type
+        replacement: shoot
+      - source_labels:
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+        action: keep
+        regex: node-exporter;metrics
+      # common metrics
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: pod
+      - source_labels: [ __meta_kubernetes_pod_node_name ]
+        target_label: node
+      - target_label: __address__
+        replacement: kube-apiserver:443
+      - source_labels: [__meta_kubernetes_pod_name, __meta_kubernetes_pod_container_port_number]
+        regex: (.+);(.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/namespaces/kube-system/pods/${1}:${2}/proxy/metrics
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.nodeExporter | indent 6 }}
+
+    - job_name: kube-proxy
+      honor_labels: false
+      scheme: https
+      tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth-insecure" . | indent 8 }}
+      kubernetes_sd_configs:
+      - role: endpoints
+        api_server: https://kube-apiserver:443
+        tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth" . | indent 10 }}
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_endpoints_name
+        - __meta_kubernetes_endpoint_port_name
+        action: keep
+        regex: kube-proxy;metrics
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: pod
+      - source_labels: [ __meta_kubernetes_pod_node_name ]
+        target_label: node
+      - target_label: __address__
+        replacement: kube-apiserver:443
+      - source_labels: [__meta_kubernetes_pod_name, __meta_kubernetes_pod_container_port_number]
+        regex: (.+);(.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/namespaces/kube-system/pods/${1}:${2}/proxy/metrics
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.kubeProxy | indent 6 }}
+
+{{- if .Values.shoot.sniEnabled }}
+    - job_name: apiserver-proxy
+      metrics_path: /metrics
+      scheme: https
+      tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth-insecure" . | indent 8 }}
+      kubernetes_sd_configs:
+      - role: endpoints
+        api_server: https://kube-apiserver:443
+        namespaces:
+          names: [ kube-system ]
+        tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth" . | indent 10 }}
+      relabel_configs:
+      - target_label: type
+        replacement: shoot
+      - source_labels:
+        - __meta_kubernetes_endpoints_name
+        - __meta_kubernetes_endpoint_port_name
+        action: keep
+        regex: apiserver-proxy;metrics
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: pod
+      - source_labels: [ __meta_kubernetes_pod_node_name ]
+        target_label: node
+      - target_label: __address__
+        replacement: kube-apiserver:443
+      - source_labels: [__meta_kubernetes_pod_name, __meta_kubernetes_pod_container_port_number]
+        regex: (.+);(.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/namespaces/kube-system/pods/${1}:${2}/proxy/metrics
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.apiserverProxy | indent 6 }}
+      # we don't care about admin metrics
+      - source_labels: [ envoy_cluster_name ]
+        regex: ^uds_admin$
+        action: drop
+      - source_labels: [ envoy_listener_address ]
+        regex: ^0.0.0.0_16910$
+        action: drop
+{{- end }}
+
+    # Fetch logs of the tunnel pod (vpn-shoot) via the kube-apiserver, which requires a functional tunnel connection.
+    - job_name: tunnel-probe-apiserver-proxy
+      honor_labels: false
+      metrics_path: /probe
+      params:
+        module:
+        - http_apiserver
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [ kube-system ]
+        api_server: https://kube-apiserver:443
+        tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth" . | indent 10 }}
+      relabel_configs:
+      - target_label: type
+        replacement: seed
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        action: keep
+        regex: vpn-shoot-(.+)
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: __param_target
+        regex: (.+)
+        replacement: https://kube-apiserver:443/api/v1/namespaces/kube-system/pods/${1}/log?tailLines=1
+        action: replace
+      - source_labels: [ __param_target ]
+        target_label: instance
+        action: replace
+      - target_label: __address__
+        replacement: 127.0.0.1:9115
+        action: replace
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.vpn | indent 6 }}
+
+    - job_name: blackbox-apiserver
+      params:
+        module:
+        - http_apiserver
+      scrape_timeout: 10s
+      metrics_path: /probe
+      static_configs:
+      - targets:
+        - {{ .Values.shoot.apiserver }}/healthz
+      relabel_configs:
+      - target_label: type
+        replacement: seed
+      - source_labels: [__address__]
+        target_label: __param_target
+        action: replace
+      - source_labels: [__param_target]
+        target_label: instance
+        action: replace
+      - target_label: __address__
+        replacement: 127.0.0.1:9115
+        action: replace
+
+    - job_name: blackbox-exporter-k8s-service-check
+      honor_labels: false
+      scheme: https
+      params:
+        module:
+        - http_kubernetes_service
+        target:
+        - https://kubernetes.default.svc.cluster.local/healthz
+      metrics_path: /probe
+      tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth-insecure" . | indent 8 }}
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [ kube-system ]
+        api_server: https://kube-apiserver:443
+        tls_config:
+{{ include "prometheus.tls-config.kube-cert-auth" . | indent 10 }}
+      relabel_configs:
+      - target_label: type
+        replacement: shoot
+      - source_labels:
+        - __meta_kubernetes_service_name
+        action: keep
+        regex: blackbox-exporter
+      - target_label: __address__
+        replacement: kube-apiserver:443
+      - source_labels: [__meta_kubernetes_service_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/namespaces/kube-system/services/${1}:probe/proxy/probe
+      - source_labels: [ __param_target ]
+        target_label: instance
+        action: replace
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.blackboxExporter | indent 8 }}
+
+    - job_name: 'vpa-exporter'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [ garden ]
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+        - __meta_kubernetes_namespace
+        action: keep
+        regex: vpa-exporter;metrics;garden
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.vpa | indent 6 }}
+      - source_labels: [ namespace ]
+        action: keep
+        regex: ^{{ .Release.Namespace }}$
+
+{{- if  (index .Values.rules.optional "hvpa" ).enabled }}
+    - job_name: 'hvpa-controller'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [ garden ]
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+        - __meta_kubernetes_namespace
+        action: keep
+        regex: hvpa-controller;metrics;garden
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.hvpa | indent 6 }}
+      - source_labels: [ namespace ]
+        action: keep
+        regex: ^{{ .Release.Namespace }}$
+{{- end }}
+
+{{- if  (index .Values.rules.optional "loki" ).enabled }}
+    - job_name: loki
+      honor_labels: false
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [{{ .Release.Namespace }}]
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+        action: keep
+        regex: loki;metrics
+      # common metrics
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: pod
+      metric_relabel_configs:
+{{ include "prometheus.keep-metrics.metric-relabel-config" .Values.allowedMetrics.loki | indent 6 }}
+{{- end }}
+
+{{- if  (index .Values.rules.optional "lokiTelegraf" ).enabled }}
+    - job_name: loki-telegraf
+      honor_labels: false
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [{{ .Release.Namespace }}]
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+        action: keep
+        regex: loki;telegraf
+      # common metrics
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [ __meta_kubernetes_pod_name ]
+        target_label: pod
+      metric_relabel_configs:
+      - source_labels: [__name__]
+        target_label: __name__
+        regex:  'iptables_(.+)'
+        action: replace
+        replacement: 'shoot_node_logging_incoming_$1'
+{{- end }}
+
+{{- if .Values.additionalScrapeConfigs }}
+{{ toString .Values.additionalScrapeConfigs | indent 4 }}
+{{- end }}

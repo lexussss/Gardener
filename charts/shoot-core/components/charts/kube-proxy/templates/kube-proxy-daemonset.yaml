@@ -1,0 +1,166 @@
+{{- define "kube-proxy.daemonset.annotations" -}}
+reference.resources.gardener.cloud/configmap-{{ include "kube-proxy.componentconfig.name" . | sha256sum | trunc 8 }}: {{ include "kube-proxy.componentconfig.name" . }}
+reference.resources.gardener.cloud/configmap-{{ include "kube-proxy.cleanup-script.name" . | sha256sum | trunc 8 }}: {{ include "kube-proxy.cleanup-script.name" . }}
+reference.resources.gardener.cloud/configmap-{{ include "kube-proxy.conntrack-fix-script.name" . | sha256sum | trunc 8 }}: {{ include "kube-proxy.conntrack-fix-script.name" . }}
+reference.resources.gardener.cloud/secret-{{ include "kube-proxy.secret-kubeconfig.name" . | sha256sum | trunc 8 }}: {{ include "kube-proxy.secret-kubeconfig.name" . }}
+{{- end -}}
+---
+apiVersion: {{ include "daemonsetversion" . }}
+kind: DaemonSet
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+  labels:
+    gardener.cloud/role: system-component
+    origin: gardener
+  annotations:
+{{ include "kube-proxy.daemonset.annotations" . | indent 4 }}
+spec:
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: kubernetes
+      role: proxy
+  template:
+    metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+{{ include "kube-proxy.daemonset.annotations" . | indent 8 }}
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+      labels:
+        gardener.cloud/role: system-component
+        origin: gardener
+        app: kubernetes
+        role: proxy
+    spec:
+{{- if (semverCompare ">= 1.16" .Values.kubernetesVersion) }}
+      initContainers:
+      - name: cleanup
+        image: {{ index .Values.images "kube-proxy" }}
+        env:
+        - name: KUBE_PROXY_MODE
+          value: {{ include "kube-proxy.mode" . }}
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - /script/cleanup.sh /var/lib/kube-proxy/mode
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: kube-proxy-cleanup-script
+          mountPath: /script
+        - name: kernel-modules
+          mountPath: /lib/modules
+        - name: kube-proxy-dir
+          mountPath: /var/lib/kube-proxy
+        - name: kube-proxy-mode
+          mountPath: /var/lib/kube-proxy/mode
+        - name: kubeconfig
+          mountPath: /var/lib/kube-proxy-kubeconfig
+        - name: kube-proxy-config
+          mountPath: /var/lib/kube-proxy-config
+{{- end }}
+      priorityClassName: system-cluster-critical
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      hostNetwork: true
+      serviceAccountName: kube-proxy
+      # not used - kubeconfig is mounted.
+      automountServiceAccountToken: false
+      containers:
+      - name: kube-proxy
+        image: {{ index .Values.images "kube-proxy" }}
+        imagePullPolicy: IfNotPresent
+        command:
+        {{- if semverCompare "< 1.17" .Values.kubernetesVersion }}
+        - /hyperkube
+        - kube-proxy
+        {{- else }}
+        - /usr/local/bin/kube-proxy
+        {{- end }}
+        - --config=/var/lib/kube-proxy-config/config.yaml
+        - --v=2
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: 20m
+            memory: 64Mi
+          {{- if .Values.global.vpaEnabled }}
+          limits:
+            cpu: 80m
+            memory: 256Mi
+          {{- end }}
+        ports:
+        - containerPort: {{ .Values.ports.metrics }}
+          protocol: TCP
+          hostPort: {{ .Values.ports.metrics }}
+          name: metrics
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /var/lib/kube-proxy-kubeconfig
+        - name: kube-proxy-config
+          mountPath: /var/lib/kube-proxy-config
+        - name: ssl-certs-hosts
+          mountPath: /etc/ssl/certs
+          readOnly: true
+        - name: systembussocket
+          mountPath: /var/run/dbus/system_bus_socket
+        - name: kernel-modules
+          mountPath: /lib/modules
+      # sidecar container with fix for conntrack
+      - name: conntrack-fix
+        image: {{ index .Values.images "alpine" }}
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - /script/conntrack_fix.sh
+        hostNetwork: true
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+        volumeMounts:
+        - name: conntrack-fix-script
+          mountPath: /script
+      volumes:
+      - name: kubeconfig
+        secret:
+          secretName: {{ include "kube-proxy.secret-kubeconfig.name" . }}
+      - name: kube-proxy-config
+        configMap:
+          name: {{ include "kube-proxy.componentconfig.name" . }}
+      - name: ssl-certs-hosts
+        hostPath:
+          path: /usr/share/ca-certificates
+      - name: systembussocket
+        hostPath:
+          path: /var/run/dbus/system_bus_socket
+      - name: kernel-modules
+        hostPath:
+          path: /lib/modules
+      - name: kube-proxy-cleanup-script
+        configMap:
+          name: {{ include "kube-proxy.cleanup-script.name" . }}
+          defaultMode: 0777
+      - name: kube-proxy-dir
+        hostPath:
+          path: /var/lib/kube-proxy
+          type: DirectoryOrCreate
+      - name: kube-proxy-mode
+        hostPath:
+          path: /var/lib/kube-proxy/mode
+          type: FileOrCreate
+      - name: conntrack-fix-script
+        configMap:
+          name: {{ include "kube-proxy.conntrack-fix-script.name" . }}
+

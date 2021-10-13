@@ -1,0 +1,79 @@
+{{- define "blackbox-exporter.deployment.annotations" -}}
+reference.resources.gardener.cloud/configmap-{{ include "blackbox-exporter.config.name" . | sha256sum | trunc 8 }}: {{ include "blackbox-exporter.config.name" . }}
+{{- end -}}
+---
+apiVersion: {{ include "deploymentversion" . }}
+kind: Deployment
+metadata:
+  name: blackbox-exporter
+  namespace: kube-system
+  labels:
+    gardener.cloud/role: monitoring
+    component: blackbox-exporter
+    origin: gardener
+  annotations:
+{{ include "blackbox-exporter.deployment.annotations" . | indent 4 }}
+spec:
+  revisionHistoryLimit: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      component: blackbox-exporter
+  template:
+    metadata:
+      annotations:
+{{ include "blackbox-exporter.deployment.annotations" . | indent 8 }}
+      labels:
+        origin: gardener
+        gardener.cloud/role: monitoring
+        component: blackbox-exporter
+        networking.gardener.cloud/from-seed: allowed
+        networking.gardener.cloud/to-dns: allowed
+        networking.gardener.cloud/to-public-networks: allowed
+    spec:
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      priorityClassName: system-cluster-critical
+      nodeSelector:
+        worker.gardener.cloud/system-components: "true"
+      securityContext:
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+      - name: blackbox-exporter
+        image: {{ index .Values.images "blackbox-exporter" }}
+        args:
+        - --config.file=/etc/blackbox_exporter/blackbox.yaml
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: 10m
+            memory: 5Mi
+          limits:
+          {{- if .Values.global.vpaEnabled }}
+            cpu: 40m
+            memory: 20Mi
+          {{- else }}
+            cpu: 50m
+            memory: 35Mi
+          {{- end }}
+        ports:
+        - containerPort: 9115
+          protocol: TCP
+          name: probe
+        volumeMounts:
+        - name: blackbox-exporter-config
+          mountPath: /etc/blackbox_exporter
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "3"
+      volumes:
+      - name: blackbox-exporter-config
+        configMap:
+          name: {{ include "blackbox-exporter.config.name" . }}
