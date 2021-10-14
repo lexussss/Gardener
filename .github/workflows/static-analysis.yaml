@@ -15,9 +15,7 @@ jobs:
 
       - name: Download ShiftLeft
         run: |
-          apt-get update
-          apt-get install -y wget curl 
-          wget -O https://cdn.shiftleft.io/download/sl
+          curl https://cdn.shiftleft.io/download/sl > sl
           chmod a+x sl
       
       - name: Perform the static analysis
