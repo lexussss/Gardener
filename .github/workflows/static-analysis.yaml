@@ -1,0 +1,27 @@
+name: 'ShiftLeft Static Analysis'
+on:
+  workflow_dispatch:
+
+jobs:
+
+  static-analysis:
+    name: ShiftLeft Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '^1.17'
+
+      - name: Download ShiftLeft
+        run: |
+          wget -O https://cdn.shiftleft.io/download/sl
+          chmod a+x sl
+      
+      - name: Perform the static analysis
+        run: |
+          cd cmd/gardenlet
+          ../../sl analyze --cpg --go --verbose --tag branch=$(git branch --show) --version-id $(git branch --show) --wait --app Gardenlet ...
+        env:
+          SHIFTLEFT_ACCESS_TOKEN: ${{ secrets.SHIFTLEFT_ACCESS_TOKEN }}
+
